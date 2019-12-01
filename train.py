@@ -15,7 +15,7 @@ from tensorflow.keras.models import Model
 from tensorflow.keras.utils import Progbar
 
 from config import Config
-from util import get_data, get_img_output_length
+from util import get_data, get_data_voc, get_img_output_length
 from thundernet.utils.np_opr import get_anchor_gt, rpn_to_roi, calc_iou
 from thundernet.layers.snet import snet_146
 from thundernet.layers.detector import rpn_layer, classifier_layer
@@ -26,8 +26,8 @@ os.environ['CUDA_VISIBLE_DEVICES'] = '0'
 
 
 # ----------------------------- Path_config ------------------------------ #
-base_path = '/data2/intern/TF-Keras-ThunderNet/'
-train_path = '/data2/intern/TF-Keras-ThunderNet/data/train.txt'
+base_path = '.'
+train_path = "F:/NAS_Liustein/Data/voc/VOCtrainval_11-May-2012/VOCdevkit" #'/data2/intern/TF-Keras-ThunderNet/data/train.txt'
 output_weight_path = os.path.join(base_path, './model/model_thunder_snet.h5')
 record_path = os.path.join(base_path, 'model/record.csv')
 base_weight_path = os.path.join(base_path, 'model/vgg16_weights_tf_dim_ordering_tf_kernels.h5')
@@ -55,7 +55,7 @@ C.base_net_weights = base_weight_path
 # This step will spend some time to load the data         #
 # --------------------------------------------------------#
 st = time.time()
-train_imgs, classes_count, class_mapping = get_data(train_path)
+train_imgs, classes_count, class_mapping = get_data_voc(train_path)
 print()
 print('Spend %0.25f mins to load the data' % ((time.time()-st)/60) )
 

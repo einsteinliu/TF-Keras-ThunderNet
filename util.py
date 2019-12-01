@@ -90,3 +90,70 @@ def get_data(input_path):
                 class_mapping[key_to_switch] = val_to_switch
 
         return all_data, classes_count, class_mapping
+
+import xmltodict
+import os
+from os.path import join
+def get_data_voc(VOCdevkit_path):
+    found_bg = False
+    all_imgs = {}
+
+    classes_count = {}
+
+    class_mapping = {}
+
+    i = 1
+    
+    for dir in os.listdir(VOCdevkit_path):
+        print("Loading "+dir)
+        curr_folder = join(VOCdevkit_path, dir)
+        annotation_folder = join(curr_folder, "Annotations")
+        image_folder = join(curr_folder, "JPEGImages")
+        for xml in os.listdir(annotation_folder):
+            with open(join(annotation_folder, xml)) as fp:
+                raw_xml = fp.read()
+                anno_dict = xmltodict.parse(raw_xml)["annotation"]
+                filename = anno_dict["filename"]
+                all_imgs[filename] = {}
+                all_imgs[filename]['filepath'] = join(image_folder, filename)
+                all_imgs[filename]['width'] = anno_dict["size"]["width"]
+                all_imgs[filename]['height'] = anno_dict["size"]["height"]     
+                objects = anno_dict["object"]
+                if not isinstance(objects, list):
+                    objects = [objects]
+                all_imgs[filename]['bboxes'] = [{'class': bbox["name"], 
+                                                 'x1': int(float(bbox["bndbox"]["xmin"])), 
+                                                 'x2': int(float(bbox["bndbox"]["xmax"])), 
+                                                 'y1': int(float(bbox["bndbox"]["ymin"])), 
+                                                 'y2': int(float(bbox["bndbox"]["ymax"]))} for bbox in objects]
+                for bbox in all_imgs[filename]['bboxes']:
+                    class_name = bbox["class"]
+                    if class_name not in classes_count:
+                        classes_count[class_name] = 1
+                    else:
+                        classes_count[class_name] += 1
+                        
+                    if class_name not in class_mapping:
+                        if class_name == 'bg' and found_bg == False:
+                            print('Found class name bg.Will be treated as background (this is usually for hard negative mining).')
+                            found_bg = True
+                        class_mapping[class_name] = len(class_mapping)
+                
+        all_data = []
+        for key in all_imgs:
+            all_data.append(all_imgs[key])
+
+        # make sure the bg class is last in the list
+        if found_bg:
+            if class_mapping['bg'] != len(class_mapping) - 1:
+                key_to_switch = [key for key in class_mapping.keys() if class_mapping[key] == len(class_mapping) - 1][0]
+                val_to_switch = class_mapping['bg']
+                class_mapping['bg'] = len(class_mapping) - 1
+                class_mapping[key_to_switch] = val_to_switch
+        
+        return all_data, classes_count, class_mapping
+        
+if __name__ == "__main__":
+    data_set = get_data_voc("F:/NAS_Liustein/Data/voc/VOCtrainval_11-May-2012/VOCdevkit")
+    
+    
