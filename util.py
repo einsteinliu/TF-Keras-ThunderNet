@@ -240,7 +240,29 @@ def get_data_sign(input_path):
 
         return all_data, classes_count, class_mapping
 
+def create_scalar_summary(scalar_names):
+    all_scalar_summary = dict()
+    for name in scalar_names:
+        value = None
+        summary = tf.Summary()
+        summary.value.add(tag=scalar_names, simple_value=value)
+        all_scalar_summary[name] = summary
+    return all_scalar_summary
+
+
+import tensorflow as tf
+
+def tensorboardx_test():
+    writer = tf.summary.FileWriter(".")
+    accuracy = None
+    accuracy_summary = tf.Summary()
+    accuracy_summary.value.add(tag='accuracy', simple_value=accuracy)
+    for i in range(100):
+        accuracy_summary.value[0].simple_value = i/100.0
+        writer.add_summary(accuracy_summary, i)
+
 if __name__ == "__main__":
+    tensorboardx_test()
     data_set = get_data_sign("MonoImagesTrainBB.txt")
     
     

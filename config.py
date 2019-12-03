@@ -54,3 +54,5 @@ class Config:
         self.class_mapping = None
 
         self.model_path = None
+
+        self.log_path = "log"

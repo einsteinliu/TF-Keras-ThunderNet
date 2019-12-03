@@ -8,19 +8,18 @@ import numpy as np
 import pickle
 import pandas as pd
 import os
-
+import tensorflow as tf
 from tensorflow.keras.optimizers import Adam
 from tensorflow.keras.layers import Input
 from tensorflow.keras.models import Model
 from tensorflow.keras.utils import Progbar
 
 from config import Config
-from util import get_data, get_data_voc, get_img_output_length
+from util import get_data, get_data_voc, get_img_output_length, create_scalar_summary, get_data_sign
 from thundernet.utils.np_opr import get_anchor_gt, rpn_to_roi, calc_iou
 from thundernet.layers.snet import snet_146
 from thundernet.layers.detector import rpn_layer, classifier_layer
 from thundernet.utils.losses import rpn_loss_cls, rpn_loss_regr,class_loss_cls, class_loss_regr
-
 
 os.environ['CUDA_VISIBLE_DEVICES'] = '0'
 
@@ -32,7 +31,7 @@ output_weight_path = os.path.join(base_path, './model/model_thunder_snet.h5')
 record_path = os.path.join(base_path, 'model/record.csv')
 base_weight_path = os.path.join(base_path, 'model/vgg16_weights_tf_dim_ordering_tf_kernels.h5')
 config_output_filename = os.path.join(base_path, './model/model_snet_config.pickle')
-
+log_dir = "log"
 # ------------------------------- Config ----------------------------------- #
 num_rois = 9  # Number of RoIs to process at once.
 horizontal_flips = False #True
@@ -50,6 +49,11 @@ C.model_path = output_weight_path
 C.num_rois = num_rois
 
 C.base_net_weights = base_weight_path
+C.log_path = log_dir
+
+logger = tf.summary.FileWriter(C.log_path)
+
+scalar_summaries = create_scalar_summary(['class_acc', 'loss_rpn_cls', 'loss_rpn_regr', 'loss_class_cls','loss_class_regr', 'curr_loss'])
 
 # --------------------------------------------------------#
 # This step will spend some time to load the data         #
@@ -167,6 +171,7 @@ model_all.compile(optimizer='sgd', loss='mae')
 total_epochs = len(record_df)
 r_epochs = len(record_df)
 
+log_interval = 10
 epoch_length = 485
 num_epochs = 100
 iter_num = 0
@@ -292,6 +297,16 @@ for epoch_num in range(num_epochs):
                            [('rpn_cls', np.mean(losses[:iter_num, 0])), ('rpn_regr', np.mean(losses[:iter_num, 1])),
                             ('final_cls', np.mean(losses[:iter_num, 2])),
                             ('final_regr', np.mean(losses[:iter_num, 3]))])
+
+            if iter_num%log_interval==0:
+                scalar_summaries['class_acc'].value[0].simple_value = losses[-1, 4]
+                scalar_summaries['loss_rpn_cls'].value[0].simple_value = losses[-1, 0]
+                scalar_summaries['loss_rpn_regr'].value[0].simple_value = losses[-1, 1]
+                scalar_summaries['loss_class_cls'].value[0].simple_value = losses[-1, 2]
+                scalar_summaries['loss_class_regr'].value[0].simple_value = losses[-1, 3]
+                scalar_summaries['curr_loss'].value[0].simple_value = losses[-1, 0]+losses[-1, 1]+losses[-1, 2]+losses[-1, 3]
+                for name in scalar_summaries:
+                    logger.add_summary(scalar_summaries[name], iter_num)
 
             if iter_num == epoch_length:
                 loss_rpn_cls = np.mean(losses[:, 0])
