@@ -26,7 +26,7 @@ os.environ['CUDA_VISIBLE_DEVICES'] = '0'
 
 # ----------------------------- Path_config ------------------------------ #
 base_path = '.'
-train_path = "F:\\VOCdevkit" #'/data2/intern/TF-Keras-ThunderNet/data/train.txt'
+train_path = "/media/liustein/Liustein/Data/voc/VOCtrainval_06-Nov-2007/VOCdevkit" #'/data2/intern/TF-Keras-ThunderNet/data/train.txt'
 output_weight_path = os.path.join(base_path, './model/model_thunder_snet.h5')
 record_path = os.path.join(base_path, 'model/record.csv')
 base_weight_path = os.path.join(base_path, 'model/vgg16_weights_tf_dim_ordering_tf_kernels.h5')
@@ -181,7 +181,7 @@ total_epochs += num_epochs
 losses = np.zeros((epoch_length, 5))
 rpn_accuracy_rpn_monitor = []
 rpn_accuracy_for_epoch = []
-batch_size = 2
+batch_size = 32
 rpn_epochs = 10
 
 
@@ -314,15 +314,14 @@ for epoch_num in range(num_epochs):
                             ('final_cls', np.mean(losses[:iter_num, 2])),
                             ('final_regr', np.mean(losses[:iter_num, 3]))])
 
-            if iter_num%log_interval==0:
-                scalar_summaries['class_acc'].value[0].simple_value = losses[-1, 4]
-                scalar_summaries['loss_rpn_cls'].value[0].simple_value = losses[-1, 0]
-                scalar_summaries['loss_rpn_regr'].value[0].simple_value = losses[-1, 1]
-                scalar_summaries['loss_class_cls'].value[0].simple_value = losses[-1, 2]
-                scalar_summaries['loss_class_regr'].value[0].simple_value = losses[-1, 3]
-                scalar_summaries['curr_loss'].value[0].simple_value = losses[-1, 0]+losses[-1, 1]+losses[-1, 2]+losses[-1, 3]
-                for name in scalar_summaries:
-                    logger.add_summary(scalar_summaries[name], iter_num)
+            scalar_summaries['class_acc'].value[0].simple_value = np.mean(losses[:iter_num, 4])
+            scalar_summaries['loss_rpn_cls'].value[0].simple_value = np.mean(losses[:iter_num, 0])
+            scalar_summaries['loss_rpn_regr'].value[0].simple_value = np.mean(losses[:iter_num, 1])
+            scalar_summaries['loss_class_cls'].value[0].simple_value = np.mean(losses[:iter_num, 2])
+            scalar_summaries['loss_class_regr'].value[0].simple_value = np.mean(losses[:iter_num, 3])
+            scalar_summaries['curr_loss'].value[0].simple_value = np.mean(losses[:iter_num, 0])+np.mean(losses[:iter_num, 1])+np.mean(losses[:iter_num, 2])+np.mean(losses[:iter_num, 3])
+            for name in scalar_summaries:
+                logger.add_summary(scalar_summaries[name], iter_num + epoch_num*epoch_length)
 
             if iter_num == epoch_length:
                 loss_rpn_cls = np.mean(losses[:, 0])
