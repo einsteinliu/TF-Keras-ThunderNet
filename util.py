@@ -245,7 +245,7 @@ def create_scalar_summary(scalar_names):
     for name in scalar_names:
         value = None
         summary = tf.Summary()
-        summary.value.add(tag=scalar_names, simple_value=value)
+        summary.value.add(tag=name, simple_value=value)
         all_scalar_summary[name] = summary
     return all_scalar_summary
 

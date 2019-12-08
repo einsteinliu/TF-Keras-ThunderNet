@@ -26,7 +26,7 @@ os.environ['CUDA_VISIBLE_DEVICES'] = '0'
 
 # ----------------------------- Path_config ------------------------------ #
 base_path = '.'
-train_path = "F:/NAS_Liustein/Data/voc/VOCtrainval_11-May-2012/VOCdevkit" #'/data2/intern/TF-Keras-ThunderNet/data/train.txt'
+train_path = "F:\\VOCdevkit" #'/data2/intern/TF-Keras-ThunderNet/data/train.txt'
 output_weight_path = os.path.join(base_path, './model/model_thunder_snet.h5')
 record_path = os.path.join(base_path, 'model/record.csv')
 base_weight_path = os.path.join(base_path, 'model/vgg16_weights_tf_dim_ordering_tf_kernels.h5')
@@ -181,6 +181,9 @@ total_epochs += num_epochs
 losses = np.zeros((epoch_length, 5))
 rpn_accuracy_rpn_monitor = []
 rpn_accuracy_for_epoch = []
+batch_size = 2
+rpn_epochs = 10
+
 
 if len(record_df)==0:
     best_loss = np.Inf
@@ -206,90 +209,103 @@ for epoch_num in range(num_epochs):
                         'RPN not producing bboxes overlap the ground truth boxes. Check RPN settings or keep training.')
 
             # Generate X (x_img) and label Y ([y_rpn_cls, y_rpn_regr])
+            Xs, Ys, image_datas, debug_imgs, debug_num_poses  = [], [], [], [], []
+            for i in range(batch_size):
+                X, Y, img_data, debug_img, debug_num_pos = next(data_gen_train)
+                Xs.append(X)
+                Ys.append(Y)
+                image_datas.append(img_data)
+                debug_imgs.append(debug_img)
+                debug_num_poses.append(debug_num_pos)
 
-            X, Y, img_data, debug_img, debug_num_pos = next(data_gen_train)
+            X = np.concatenate(Xs, axis=0)
+            Y = [np.concatenate([Y[0] for Y in Ys], axis=0),
+                 np.concatenate([Y[1] for Y in Ys], axis=0)]
 
             # Train rpn model and get loss value [_, loss_rpn_cls, loss_rpn_regr]
             loss_rpn = model_rpn.train_on_batch(X, Y)
 
-            # Get predicted rpn from rpn model [rpn_cls, rpn_regr]
-            P_rpn = model_rpn.predict_on_batch(X)
-            # print(P_rpn[0])
-            # R: bboxes (shape=(300,4))
-            # Convert rpn layer to roi bboxes
-            R = rpn_to_roi(P_rpn[0], P_rpn[1], C, 'tf', use_regr=True, overlap_thresh=0.7, max_boxes=300)
-
-            # note: calc_iou converts from (x1,y1,x2,y2) to (x,y,w,h) format
-            # X2: bboxes that iou > C.classifier_min_overlap for all gt bboxes in 300 non_max_suppression bboxes
-            # Y1: one hot code for bboxes from above => x_roi (X)
-            # Y2: corresponding labels and corresponding gt bboxes
-            X2, Y1, Y2, IouS = calc_iou(R, img_data, C, class_mapping)
-
-            # If X2 is None means there are no matching bboxes
-            if X2 is None:
-                rpn_accuracy_rpn_monitor.append(0)
-                rpn_accuracy_for_epoch.append(0)
-                continue
-
-            # Find out the positive anchors and negative anchors
-            neg_samples = np.where(Y1[0, :, -1] == 1)
-            pos_samples = np.where(Y1[0, :, -1] == 0)
-
-            if len(neg_samples) > 0:
-                neg_samples = neg_samples[0]
-            else:
-                neg_samples = []
-
-            if len(pos_samples) > 0:
-                pos_samples = pos_samples[0]
-            else:
-                pos_samples = []
-
-            rpn_accuracy_rpn_monitor.append(len(pos_samples))
-            rpn_accuracy_for_epoch.append((len(pos_samples)))
-
-            if C.num_rois > 1:
-                # If number of positive anchors is larger than 4//2 = 2, randomly choose 2 pos samples
-                if len(pos_samples) < C.num_rois // 2:
-                    selected_pos_samples = pos_samples.tolist()
-                else:
-                    selected_pos_samples = np.random.choice(pos_samples, C.num_rois // 2, replace=False).tolist()
-
-                # Randomly choose (num_rois - num_pos) neg samples
-                try:
-                    selected_neg_samples = np.random.choice(neg_samples, C.num_rois - len(selected_pos_samples),
-                                                            replace=False).tolist()
-                except:
-                    selected_neg_samples = np.random.choice(neg_samples, C.num_rois - len(selected_pos_samples),
-                                                            replace=True).tolist()
-
-                # Save all the pos and neg samples in sel_samples
-                sel_samples = selected_pos_samples + selected_neg_samples
-            else:
-                # in the extreme case where num_rois = 1, we pick a random pos or neg sample
-                selected_pos_samples = pos_samples.tolist()
-                selected_neg_samples = neg_samples.tolist()
-                if np.random.randint(0, 2):
-                    sel_samples = random.choice(neg_samples)
-                else:
-                    sel_samples = random.choice(pos_samples)
-
-            # training_data: [X, X2[:, sel_samples, :]]
-            # labels: [Y1[:, sel_samples, :], Y2[:, sel_samples, :]]
-            #  X                     => img_data resized image
-            #  X2[:, sel_samples, :] => num_rois (4 in here) bboxes which contains selected neg and pos
-            #  Y1[:, sel_samples, :] => one hot encode for num_rois bboxes which contains selected neg and pos
-            #  Y2[:, sel_samples, :] => labels and gt bboxes for num_rois bboxes which contains selected neg and pos
-            loss_class = model_classifier.train_on_batch([X, X2[:, sel_samples, :]],
-                                                         [Y1[:, sel_samples, :], Y2[:, sel_samples, :]])
-            #             res = model_classifier.predict([X, X2[:, sel_samples, :]])
-            #             print(res)
             losses[iter_num, 0] = loss_rpn[1]
             losses[iter_num, 1] = loss_rpn[2]
 
-            losses[iter_num, 2] = loss_class[1]
-            losses[iter_num, 3] = loss_class[2]
-            losses[iter_num, 4] = loss_class[3]
+            if epoch_num>rpn_epochs:
+                # Get predicted rpn from rpn model [rpn_cls, rpn_regr]
+                P_rpn = model_rpn.predict_on_batch(X)
+
+                # print(P_rpn[0])
+                # R: bboxes (shape=(300,4))
+                # Convert rpn layer to roi bboxes
+                R = rpn_to_roi(P_rpn[0], P_rpn[1], C, 'tf', use_regr=True, overlap_thresh=0.7, max_boxes=300)
+
+                # note: calc_iou converts from (x1,y1,x2,y2) to (x,y,w,h) format
+                # X2: bboxes that iou > C.classifier_min_overlap for all gt bboxes in 300 non_max_suppression bboxes
+                # Y1: one hot code for bboxes from above => x_roi (X)
+                # Y2: corresponding labels and corresponding gt bboxes
+                X2, Y1, Y2, IouS = calc_iou(R, img_data, C, class_mapping)
+
+                # If X2 is None means there are no matching bboxes
+                if X2 is None:
+                    rpn_accuracy_rpn_monitor.append(0)
+                    rpn_accuracy_for_epoch.append(0)
+                    continue
+
+                # Find out the positive anchors and negative anchors
+                neg_samples = np.where(Y1[0, :, -1] == 1)
+                pos_samples = np.where(Y1[0, :, -1] == 0)
+
+                if len(neg_samples) > 0:
+                    neg_samples = neg_samples[0]
+                else:
+                    neg_samples = []
+
+                if len(pos_samples) > 0:
+                    pos_samples = pos_samples[0]
+                else:
+                    pos_samples = []
+
+                rpn_accuracy_rpn_monitor.append(len(pos_samples))
+                rpn_accuracy_for_epoch.append((len(pos_samples)))
+
+                if C.num_rois > 1:
+                    # If number of positive anchors is larger than 4//2 = 2, randomly choose 2 pos samples
+                    if len(pos_samples) < C.num_rois // 2:
+                        selected_pos_samples = pos_samples.tolist()
+                    else:
+                        selected_pos_samples = np.random.choice(pos_samples, C.num_rois // 2, replace=False).tolist()
+
+                    # Randomly choose (num_rois - num_pos) neg samples
+                    try:
+                        selected_neg_samples = np.random.choice(neg_samples, C.num_rois - len(selected_pos_samples),
+                                                                replace=False).tolist()
+                    except:
+                        selected_neg_samples = np.random.choice(neg_samples, C.num_rois - len(selected_pos_samples),
+                                                                replace=True).tolist()
+
+                    # Save all the pos and neg samples in sel_samples
+                    sel_samples = selected_pos_samples + selected_neg_samples
+                else:
+                    # in the extreme case where num_rois = 1, we pick a random pos or neg sample
+                    selected_pos_samples = pos_samples.tolist()
+                    selected_neg_samples = neg_samples.tolist()
+                    if np.random.randint(0, 2):
+                        sel_samples = random.choice(neg_samples)
+                    else:
+                        sel_samples = random.choice(pos_samples)
+
+                # training_data: [X, X2[:, sel_samples, :]]
+                # labels: [Y1[:, sel_samples, :], Y2[:, sel_samples, :]]
+                #  X                     => img_data resized image
+                #  X2[:, sel_samples, :] => num_rois (4 in here) bboxes which contains selected neg and pos
+                #  Y1[:, sel_samples, :] => one hot encode for num_rois bboxes which contains selected neg and pos
+                #  Y2[:, sel_samples, :] => labels and gt bboxes for num_rois bboxes which contains selected neg and pos
+                loss_class = model_classifier.train_on_batch([X, X2[:, sel_samples, :]],
+                                                            [Y1[:, sel_samples, :], Y2[:, sel_samples, :]])
+                #             res = model_classifier.predict([X, X2[:, sel_samples, :]])
+                #             print(res)                        
+
+                losses[iter_num, 2] = loss_class[1]
+                losses[iter_num, 3] = loss_class[2]
+                losses[iter_num, 4] = loss_class[3]
 
             iter_num += 1
 
